@@ -1,7 +1,8 @@
 # Wiring a coding agent (Grok Build / OpenCode)
 
-**The runner needs no AI.** It is fully deterministic: L1–L5 messages are fixed
-strings and L6 is a numeric guess loop. There is no model call in the decision
+**The runner needs no AI / model calls.** L1–L4 and the L5 cashier prompt are
+fixed strings; L5 scrapes a four-digit code from the cashier reply; L6 is a
+numeric guess loop. There is no model call in the decision
 path, so no API key or Grok Build / OpenCode instance is required for it to run.
 
 If you want your agent to **operate or watch** the runner:

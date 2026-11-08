@@ -82,10 +82,11 @@ token bands.
 
 ## 5. AI agent / Grok Build wiring
 
-**The runner is deterministic and makes no model calls.** Every L1–L5 message is a
-fixed string in `scripts/team_prompts.json`, and L6 is a numeric guess loop. There
-is no LLM in the decision path, so there is nothing to wire up for the runner to
-work — no API key, no Grok Build or OpenCode instance needed.
+**The runner makes no model calls.** L1–L4 prompts and the L5 cashier template are
+fixed strings in `scripts/team_prompts.json`. L5 still scrapes the four-digit code
+from the cashier reply when the hallway is right. L6 is a numeric guess loop.
+There is no LLM in the decision path — no API key, no Grok Build or OpenCode
+instance needed for it to run.
 
 If a teammate wants their coding agent (Grok Build, OpenCode, etc.) to **operate
 or monitor** the runner, point it at this repo and let it run the shell commands

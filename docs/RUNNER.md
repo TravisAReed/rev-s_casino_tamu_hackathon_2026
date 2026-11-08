@@ -7,8 +7,9 @@
 One **fixed** chat message per attempt, from `scripts/team_prompts.json`. On a
 miss it resets the level and resends. No follow-up messages are sent on L1–L5.
 Level 5 uses the cashier-only route (it skips the host and the pit boss): guess a
-hallway, send one cashier message, then try the door phrases (door tries are
-free).
+hallway, send one cashier message, scrape the single four-digit code from that
+reply (often digits-only when the hallway is right), then try the door phrases
+(door tries are free). Wrong hallways get a refusal with no digits.
 
 Each clear is kept only if its token count lands inside that level's quality band.
 An over-band clear is retried; if none lands in band, the lowest clear is used.

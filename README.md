@@ -14,6 +14,15 @@ score.
 > Contest deadline: about **noon CST, Sunday Nov 8 2026**. Do not submit anything
 > through automation; the runner only plays, it does not submit.
 
+## Coordinator browser (no CDP)
+
+`python -m uiadapt` is the opt-in planner for a browser this VM cannot attach to.
+It reads `scripts/team_prompts.json`, writes one visible UI action as JSON, and
+accepts an observed result file. It does not launch a browser, attach CDP, or
+call the game. `scripts/team_runner.py` remains the legacy CDP path; do not point
+it at the coordinator's signed-in browser. The planner leaves Slots alone and
+does not guess level-6 codes. See `python -m uiadapt schema`.
+
 ## 1. Prerequisites
 
 - Linux or macOS, Python 3.10+.

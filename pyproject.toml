@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "revs-casino-harness"
 version = "0.1.0"
-description = "CDP-only player UI harness"
+description = "Casino harness with a legacy CDP player and an opt-in visible-UI planner"
 requires-python = ">=3.10"
 dependencies = [
     "mcp>=1.20,<2",
@@ -14,9 +14,10 @@ dependencies = [
 
 [project.scripts]
 casino = "casino.cli:main"
+revs-ui = "uiadapt.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["casino"]
+packages = ["casino", "uiadapt"]
 
 [dependency-groups]
 dev = [

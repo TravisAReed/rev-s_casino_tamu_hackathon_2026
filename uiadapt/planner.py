@@ -735,10 +735,16 @@ def _validate(action, result):
         if not isinstance(result["cleared"], bool):
             raise ValueError("cleared must be a boolean")
     elif kind == "observe_level":
-        _require(result, "door_available", "needs_restart", "tries_remaining")
+        _require(result, "door_available", "needs_restart")
         if not isinstance(result["door_available"], bool) or not isinstance(result["needs_restart"], bool):
             raise ValueError("door_available and needs_restart must be booleans")
-        _as_int(result["tries_remaining"], "tries_remaining")
+        tries = result.get("tries_remaining", None)
+        counter_hidden = result["door_available"] is False or result["needs_restart"] is True
+        if tries is None:
+            if not counter_hidden:
+                raise ValueError("tries_remaining is required while the door can be tried")
+        else:
+            _as_int(tries, "tries_remaining")
         if "best" in result and result["best"] is not None:
             _as_int(result["best"], "best")
     if "tokens_current_attempt" in result and result["tokens_current_attempt"] is not None:
@@ -853,7 +859,9 @@ def apply_result(ledger, result, now=None):
                 _stop(ledger, "best_regressed", worse=worse)
                 _remember(ledger, pending, result)
                 return {"ok": True, "stopped": True, "reason": "best_regressed"}
-        needs_restart = result["needs_restart"] or result["tries_remaining"] == 0 or result["door_available"] is False
+        tries = result.get("tries_remaining", None)
+        tries_known_zero = isinstance(tries, int) and not isinstance(tries, bool) and tries == 0
+        needs_restart = result["needs_restart"] is True or result["door_available"] is False or tries_known_zero
         if needs_restart:
             _clear_l5_route(ledger)
             ledger["phase"] = "l5_restart"
@@ -946,7 +954,7 @@ RESULT_SCHEMA = {
         "rate_limited": "boolean; true stops the plan",
         "door_available": "boolean, required for observe_level",
         "needs_restart": "boolean, required for observe_level",
-        "tries_remaining": "integer, required for observe_level",
+        "tries_remaining": "integer when a tries-left counter is visible. Omit or null when the door is unavailable or a restart is already required and no counter is shown. A missing value is not zero.",
         "notes": "string",
     },
     "forbidden_keys": sorted(FORBIDDEN_KEYS),

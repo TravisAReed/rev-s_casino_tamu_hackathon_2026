@@ -162,6 +162,42 @@ def test_l5_keeps_one_route_and_repo_candidates():
     assert ledger["l5"]["door_tries"] == 1
 
 
+def test_hidden_try_counter_is_not_stored_as_zero():
+    ledger = new_ledger(NOW)
+    _step(ledger, bests=BESTS)
+    ledger["phase"] = "l5_observe"
+    ledger["pending_action"] = None
+    plan_next(ledger, NOW)
+    outcome = apply_result(ledger, {
+        "action_id": "l5-r1-observe",
+        "ok": True,
+        "door_available": False,
+        "needs_restart": True,
+        "best": 1046,
+        "cooldown_s": 0,
+        "rate_limited": False,
+    }, NOW)
+    assert outcome["ok"] is True
+    assert outcome["phase"] == "l5_restart"
+    assert ledger["l5"].get("tries_remaining") != 0
+    assert plan_next(ledger, NOW)["actions"][0]["type"] == "restart_level"
+    open_door = new_ledger(NOW)
+    _step(open_door, bests=BESTS)
+    open_door["phase"] = "l5_observe"
+    open_door["pending_action"] = None
+    plan_next(open_door, NOW)
+    refused = apply_result(open_door, {
+        "action_id": "l5-r1-observe",
+        "ok": True,
+        "door_available": True,
+        "needs_restart": False,
+        "cooldown_s": 0,
+        "rate_limited": False,
+    }, NOW)
+    assert refused["ok"] is False
+    assert "tries_remaining" in refused["error"]
+
+
 def test_l5_without_one_code_does_not_try_the_door():
     ledger = new_ledger(NOW)
     _step(ledger, bests=BESTS)

@@ -161,6 +161,8 @@ def new_ledger(now=None):
             "hallway": HALLWAY,
             "primary_phrase": PRIMARY_PHRASE,
             "code": None,
+            "code_available": False,
+            "code_ref": None,
             "phrases_tried": [],
             "door_tries": 0,
             "run_anchored": False,
@@ -225,6 +227,10 @@ def infer_rank(reply, tried):
         if code not in used:
             return code
     return None
+
+
+def contains_door_code(text):
+    return re.search(r"\b\d{4}\b", str(text or "")) is not None
 
 
 def extract_code(reply):
@@ -420,14 +426,23 @@ def _select_lena_action(ledger):
 def _send_l5_action(ledger, prompts):
     text = prompts["5"]["cashier"].format(hallway=HALLWAY)
     action = _send_action(ledger, 5, text, f"l5-r{ledger['replays']['5'] + 1}-send")
+    action["instruction"] = (
+        "Click the composer whose placeholder is "
+        + repr(PLACEHOLDERS[5])
+        + ". If it is not empty, do not send; report ok false and notes composer_not_empty. "
+        + "Otherwise enter exactly the text in this action and click Send once. "
+        + "Keep any door code on this browser only. In the result, set code_available true and "
+        + "code_ref to a label with no digits. Do not put the code in reply, notes, or code_ref."
+    )
     action["evidence"] = {
         "hallway": HALLWAY,
         "hallway_in_repo": True,
         "hallway_note": "Site-verified hallway from Theo on the reported route, and a member of the repo hallway list.",
-        "code_note": "Ask Lena once. Use a code only if her reply contains exactly one 4-digit group.",
+        "code_note": "Ask Lena once. Leave the digits in the browser. Report code_available and code_ref only.",
         "template": prompts["5"]["cashier"],
     }
-    action["route_rule"] = "Do not restart after this message until its door tries are finished or the reply has no single code."
+    action["route_rule"] = "Do not restart after this message until its door tries are finished or no code was captured."
+    action["code_policy"] = "browser_only"
     return action
 
 
@@ -440,18 +455,20 @@ def _door_action(ledger, phrase):
         "try_door",
         5,
         (
-            "Fill the vault-route fields Hallway, Code, and Phrase with the values "
-            "in this action, then click Try the door once. Do not restart. Do not send a chat."
+            "Fill Hallway and Phrase with the values in this action. "
+            "For Code, use code captured in current browser run. "
+            "Do not restart. Do not send a chat. Do not include the code digits in the result."
         ),
         fields={
             "hallway": ledger["l5"]["hallway"],
-            "code": ledger["l5"]["code"],
             "phrase": phrase,
+            "code_ref": ledger["l5"].get("code_ref"),
+            "code_source": "use code captured in current browser run",
         },
         submit_button="Try the door",
         door_try=index,
         replay_attempt=attempt,
-        route_rule="Same hallway and same code for every door try in this run.",
+        route_rule="Same hallway and the browser-held code for every door try in this run.",
     )
 
 
@@ -465,6 +482,8 @@ def _skip_l5_message(ledger):
 
 def _clear_l5_route(ledger):
     ledger["l5"]["code"] = None
+    ledger["l5"]["code_available"] = False
+    ledger["l5"]["code_ref"] = None
     ledger["l5"]["phrases_tried"] = []
     ledger["l5"]["door_tries"] = 0
     ledger["l5"]["run_anchored"] = False
@@ -515,7 +534,7 @@ def compute_action(ledger, now=None):
         if phase == "l5_door":
             if ledger["l5"]["door_tries"] >= ledger["limits"]["max_door_tries_per_run"]:
                 return _after_l5_run(ledger)
-            if not ledger["l5"].get("code"):
+            if ledger["l5"].get("code_available") is not True:
                 return _stop(ledger, "missing_code")
             phrase = next_phrase(ledger, prompts)
             if phrase is None:
@@ -700,6 +719,20 @@ def _apply_clear(ledger, level, tokens, cleared):
     return {"cleared": True, "best_changed": False, "tokens": tokens}
 
 
+def _validate_l5_code(result):
+    """Accept a browser-held code reference and refuse any copied digits."""
+    if "code_available" in result and not isinstance(result.get("code_available"), bool):
+        raise ValueError("code_available must be a boolean")
+    for field in ("reply", "notes", "code_ref"):
+        value = result.get(field)
+        if isinstance(value, str) and contains_door_code(value):
+            raise ValueError("omit the door code from " + field + "; keep the digits in the browser")
+    if result.get("code_available") is True:
+        ref = result.get("code_ref")
+        if not isinstance(ref, str) or not ref.strip():
+            raise ValueError("code_ref is required when code_available is true")
+
+
 def _require(result, *names):
     missing = [name for name in names if name not in result]
     if missing:
@@ -730,6 +763,8 @@ def _validate(action, result):
             raise ValueError("reply must be a string")
         if not isinstance(result["cleared"], bool):
             raise ValueError("cleared must be a boolean")
+        if action.get("level") == 5:
+            _validate_l5_code(result)
     elif kind in {"lock_rank", "try_door"}:
         _require(result, "cleared")
         if not isinstance(result["cleared"], bool):
@@ -877,9 +912,7 @@ def apply_result(ledger, result, now=None):
     elif kind == "send_chat" and pending["level"] == 5:
         ledger["chat_messages_used"] += 1
         ledger["replays"]["5"] += 1
-        reply = result["reply"][:500]
-        code = extract_code(reply)
-        ledger["l5"]["code"] = code
+        ledger["l5"]["code"] = None
         ledger["l5"]["phrases_tried"] = []
         ledger["l5"]["door_tries"] = 0
         if result["cleared"] is True:
@@ -887,7 +920,9 @@ def apply_result(ledger, result, now=None):
             ledger["l5"]["improved"] = info["best_changed"]
             ledger["phase"] = "done"
             _stop(ledger, "plan_complete", score_total=score_total(ledger.get("verified_bests")))
-        elif code:
+        elif result.get("code_available") is True:
+            ledger["l5"]["code_available"] = True
+            ledger["l5"]["code_ref"] = result["code_ref"].strip()
             ledger["phase"] = "l5_door"
         else:
             _clear_l5_route(ledger)
@@ -955,7 +990,9 @@ RESULT_SCHEMA = {
         "door_available": "boolean, required for observe_level",
         "needs_restart": "boolean, required for observe_level",
         "tries_remaining": "integer when a tries-left counter is visible. Omit or null when the door is unavailable or a restart is already required and no counter is shown. A missing value is not zero.",
-        "notes": "string",
+        "notes": "string. On the level-5 cashier result, do not include the door code.",
+        "code_available": "boolean. True when the browser captured one door code and will keep the digits locally.",
+        "code_ref": "opaque label for that browser-held code. Required with code_available, and must not contain the digits.",
     },
     "forbidden_keys": sorted(FORBIDDEN_KEYS),
     "rules": [

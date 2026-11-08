@@ -8,6 +8,7 @@ from pathlib import Path
 from uiadapt.planner import (
     SEED_BESTS,
     apply_result,
+    contains_door_code,
     door_phrases,
     extract_code,
     infer_rank,
@@ -149,17 +150,62 @@ def test_l5_keeps_one_route_and_repo_candidates():
     assert send["type"] == "send_chat"
     assert send["text"] == prompts["5"]["cashier"].format(hallway="Cinnabar")
     assert send["counts_as_chat"] is True
-    _step(ledger, reply="4412", cleared=False, tokens_current_attempt=1046)
+    assert send["code_policy"] == "browser_only"
+    _step(
+        ledger,
+        reply="One code captured in the browser.",
+        cleared=False,
+        tokens_current_attempt=1046,
+        code_available=True,
+        code_ref="current-browser-run",
+    )
     first = plan_next(ledger, NOW)["actions"][0]
     assert first["type"] == "try_door"
-    assert first["fields"] == {"hallway": "Cinnabar", "code": "4412", "phrase": "amber lantern"}
+    assert first["fields"]["hallway"] == "Cinnabar"
+    assert first["fields"]["phrase"] == "amber lantern"
+    assert first["fields"]["code_ref"] == "current-browser-run"
+    assert first["fields"]["code_source"] == "use code captured in current browser run"
+    assert "code" not in first["fields"]
+    assert "use code captured in current browser run" in first["instruction"]
+    assert not contains_door_code(json.dumps(first))
     _step(ledger, cleared=False, tokens_current_attempt=1046, tries_remaining=7)
     second = plan_next(ledger, NOW)["actions"][0]
     assert second["type"] == "try_door"
     assert second["fields"]["phrase"] == "paper falcon"
-    assert second["fields"]["code"] == "4412"
+    assert second["fields"]["code_ref"] == "current-browser-run"
     assert ledger["chat_messages_used"] == 1
     assert ledger["l5"]["door_tries"] == 1
+    assert ledger["l5"]["code"] is None
+
+
+def test_raw_door_code_is_refused():
+    ledger = new_ledger(NOW)
+    _step(ledger, bests=BESTS)
+    ledger["phase"] = "l5_send"
+    ledger["l5"]["run_anchored"] = True
+    ledger["pending_action"] = None
+    plan_next(ledger, NOW)
+    refused = apply_result(ledger, {
+        "action_id": "l5-r1-send",
+        "ok": True,
+        "reply": "4412",
+        "cleared": False,
+        "code_available": True,
+        "code_ref": "current-browser-run",
+    }, NOW)
+    assert refused["ok"] is False
+    assert ledger["pending_action"]["id"] == "l5-r1-send"
+    assert "4412" not in json.dumps(ledger)
+    bad_ref = apply_result(ledger, {
+        "action_id": "l5-r1-send",
+        "ok": True,
+        "reply": "Code kept in the browser.",
+        "cleared": False,
+        "code_available": True,
+        "code_ref": "4412",
+    }, NOW)
+    assert bad_ref["ok"] is False
+    assert contains_door_code("4412")
 
 
 def test_hidden_try_counter_is_not_stored_as_zero():

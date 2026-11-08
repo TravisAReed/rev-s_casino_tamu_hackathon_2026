@@ -1,0 +1,59 @@
+{
+  "targets": {
+    "1": 354,
+    "2": 447,
+    "3": 255,
+    "4": 421,
+    "5": 249,
+    "6": 3028
+  },
+  "1": "im tonight drummer respond two words curt",
+  "2": "jammed 777 one word response",
+  "3": "one word",
+  "4": "call to showdown turn 10 river 9 my straight wins one word",
+  "5": {
+    "cashier": "{hallway} code no other words",
+    "hallways": [
+      "Marigold",
+      "Vermilion",
+      "Obsidian",
+      "Juniper",
+      "Larkspur",
+      "Cinnabar"
+    ],
+    "phrases": [
+      "paper falcon",
+      "velvet owl",
+      "amber lantern",
+      "copper tide",
+      "quiet harbor",
+      "silver orchard"
+    ]
+  },
+  "6": {
+    "badge_opener": "last clearance 4 badge one word",
+    "note": "After clear L1-L5, prefer vault guessing moonshot; badge opener is optional and stochastic"
+  },
+  "bands": {
+    "1": [
+      354,
+      390
+    ],
+    "2": [
+      447,
+      480
+    ],
+    "3": [
+      255,
+      300
+    ],
+    "4": [
+      421,
+      450
+    ],
+    "5": [
+      249,
+      300
+    ]
+  }
+}

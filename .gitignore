@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.venv/
+.pw-profile/
+browser/logs/
+browser/chromium.pid
+runs/
+*.db
+.env
+.env.*
+*.log
+*.bak*

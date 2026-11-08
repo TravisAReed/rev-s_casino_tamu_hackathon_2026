@@ -163,6 +163,7 @@ def new_ledger(now=None):
             "code": None,
             "code_available": False,
             "code_ref": None,
+            "hallways_tried": [],
             "phrases_tried": [],
             "door_tries": 0,
             "run_anchored": False,
@@ -238,6 +239,23 @@ def extract_code(reply):
     if len(found) != 1:
         return None
     return found[0]
+
+
+def hallway_order(prompts=None):
+    """Prefer the previously verified name once, then the remaining repo names."""
+    prompts = prompts or load_prompts()
+    names = list(prompts["5"]["hallways"])
+    if HALLWAY in names:
+        return [HALLWAY] + [name for name in names if name != HALLWAY]
+    return names
+
+
+def next_hallway(ledger, prompts=None):
+    tried = set(ledger["l5"].get("hallways_tried") or [])
+    for name in hallway_order(prompts):
+        if name not in tried:
+            return name
+    return None
 
 
 def door_phrases(prompts=None):
@@ -392,20 +410,28 @@ def _observe_l5_action(ledger):
     )
 
 
-def _restart_l5_action(ledger):
+def _restart_l5_action(ledger, prompts):
     attempt = ledger["replays"]["5"] + 1
+    upcoming = next_hallway(ledger, prompts)
+    refused = ledger["l5"].get("hallways_tried") or []
+    instruction = (
+        "Restart Casino Floor. Click 'New attempt' or 'Restart', then confirm with "
+        "'Start new attempt' or 'Restart level'. This draws a new route. Do not send a chat. "
+        "Do not reuse a hallway Lena already refused"
+        + (": " + ", ".join(refused) if refused else "")
+        + "."
+    )
+    if upcoming:
+        instruction += " The next cashier message will try " + upcoming + ", the next unused repo hallway."
     return _base_action(
         f"l5-r{attempt}-restart",
         "restart_level",
         5,
-        (
-            "Restart Casino Floor only if the current run cannot accept a door try. "
-            "Click 'New attempt' or 'Restart', then confirm with 'Start new attempt' "
-            "or 'Restart level'. This draws a new route. Do not reuse a code from "
-            "an earlier run. Do not send a chat in this step."
-        ),
+        instruction,
         replay_attempt=attempt,
-        route_rule="A restart starts a new route. Hold that route for the one cashier message and its door tries.",
+        next_hallway=upcoming,
+        refused_hallways=list(refused),
+        route_rule="A restart starts a new route. Do not assume the previous hallway is still correct.",
     )
 
 
@@ -424,7 +450,10 @@ def _select_lena_action(ledger):
 
 
 def _send_l5_action(ledger, prompts):
-    text = prompts["5"]["cashier"].format(hallway=HALLWAY)
+    hallway = next_hallway(ledger, prompts)
+    if hallway is None:
+        return _stop(ledger, "hallways_exhausted")
+    text = prompts["5"]["cashier"].format(hallway=hallway)
     action = _send_action(ledger, 5, text, f"l5-r{ledger['replays']['5'] + 1}-send")
     action["instruction"] = (
         "Click the composer whose placeholder is "
@@ -435,9 +464,9 @@ def _send_l5_action(ledger, prompts):
         + "code_ref to a label with no digits. Do not put the code in reply, notes, or code_ref."
     )
     action["evidence"] = {
-        "hallway": HALLWAY,
+        "hallway": hallway,
         "hallway_in_repo": True,
-        "hallway_note": "Site-verified hallway from Theo on the reported route, and a member of the repo hallway list.",
+        "hallway_note": "Unused name from scripts/team_prompts.json. A hallway Lena refused is not reused on the next route.",
         "code_note": "Ask Lena once. Leave the digits in the browser. Report code_available and code_ref only.",
         "template": prompts["5"]["cashier"],
     }
@@ -524,7 +553,7 @@ def compute_action(ledger, now=None):
         if phase == "l5_restart":
             if _skip_l5_message(ledger):
                 return _stop(ledger, "replay_budget" if ledger["replays"]["5"] >= 2 else "chat_budget")
-            return _restart_l5_action(ledger)
+            return _restart_l5_action(ledger, prompts)
         if phase == "l5_select":
             return _select_lena_action(ledger)
         if phase == "l5_send":
@@ -925,7 +954,12 @@ def apply_result(ledger, result, now=None):
             ledger["l5"]["code_ref"] = result["code_ref"].strip()
             ledger["phase"] = "l5_door"
         else:
+            tried = ledger["l5"].setdefault("hallways_tried", [])
+            refused = (pending.get("evidence") or {}).get("hallway")
+            if refused and refused not in tried:
+                tried.append(refused)
             _clear_l5_route(ledger)
+            ledger["l5"]["hallways_tried"] = tried
             if ledger["replays"]["5"] < ledger["limits"]["max_replays_per_level"] and chats_left(ledger) >= 1:
                 ledger["phase"] = "l5_restart"
             else:

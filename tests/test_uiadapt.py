@@ -256,7 +256,16 @@ def test_l5_without_one_code_does_not_try_the_door():
     follow = plan_next(ledger, NOW)["actions"][0]
     assert follow["type"] == "restart_level"
     assert follow["level"] == 5
+    assert follow["next_hallway"] == "Marigold"
+    assert "Cinnabar" in follow["refused_hallways"]
     assert ledger["l5"]["code"] is None
+    assert ledger["verified_bests"]["5"] == 1046
+    _step(ledger)
+    _step(ledger)
+    retry = plan_next(ledger, NOW)["actions"][0]
+    assert retry["type"] == "send_chat"
+    assert retry["text"] == "Marigold code no other words"
+    assert "Cinnabar" not in retry["text"]
 
 
 def test_caps_cooldown_and_deadline():
